@@ -1,0 +1,860 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="theme-color" content="#10141d">
+<title>OANI Ω Chess</title>
+<script src="https://cdn.jsdelivr.net/npm/chess.js@1.4.0/dist/cjs/chess.js"></script>
+<style>
+:root {
+  color-scheme: dark;
+  --bg: #10141d;
+  --panel: #1a2230;
+  --panel2: #222d3d;
+  --text: #eef3fb;
+  --muted: #9aa9bd;
+  --accent: #79d6c3;
+  --border: #344154;
+  --light: #dce4e8;
+  --dark: #6d8c91;
+  --selected: #e7c45c;
+}
+* { box-sizing: border-box; }
+body {
+  margin: 0;
+  min-height: 100vh;
+  background: var(--bg);
+  color: var(--text);
+  font-family: system-ui, sans-serif;
+}
+header {
+  padding: 16px 20px;
+  border-bottom: 1px solid var(--border);
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 12px;
+}
+.brand { font-size: 21px; font-weight: 800; letter-spacing: .5px; }
+.brand span { color: var(--accent); }
+.status { color: var(--muted); font-size: 12px; }
+main {
+  width: min(1180px, 100%);
+  margin: auto;
+  padding: 18px;
+  display: grid;
+  grid-template-columns: minmax(280px, 650px) minmax(260px, 1fr);
+  gap: 18px;
+}
+.panel {
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: 15px;
+  padding: 15px;
+  min-width: 0;
+}
+.board-wrap { width: 100%; max-width: 650px; margin: auto; }
+.board {
+  width: 100%;
+  aspect-ratio: 1;
+  display: grid;
+  grid-template-columns: repeat(8, 1fr);
+  border: 4px solid #303d4e;
+  border-radius: 7px;
+  overflow: hidden;
+  touch-action: manipulation;
+}
+.square {
+  border: 0;
+  padding: 0;
+  display: grid;
+  place-items: center;
+  position: relative;
+  font-size: clamp(23px, 6.5vw, 54px);
+  cursor: pointer;
+  user-select: none;
+}
+.square.light { background: var(--light); }
+.square.dark { background: var(--dark); }
+.square.selected { background: var(--selected); }
+.square.target::after {
+  content: "";
+  position: absolute;
+  width: 25%;
+  aspect-ratio: 1;
+  border-radius: 50%;
+  background: #15212b80;
+}
+.square.capture::after {
+  width: 78%;
+  border: 5px solid #15212b80;
+  background: transparent;
+}
+.piece-white {
+  color: #fff;
+  text-shadow: 0 1px 2px #111, 0 0 3px #111;
+}
+.piece-black {
+  color: #17212b;
+  text-shadow: 0 1px 1px #fff7;
+}
+.coordinates {
+  position: absolute;
+  left: 3px;
+  top: 1px;
+  font-size: 10px;
+  font-weight: 700;
+  opacity: .75;
+  pointer-events: none;
+}
+.controls, .toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 12px;
+}
+button, select, textarea {
+  font: inherit;
+}
+button, select {
+  background: var(--panel2);
+  color: var(--text);
+  border: 1px solid var(--border);
+  border-radius: 9px;
+  padding: 9px 11px;
+}
+button { cursor: pointer; }
+button.primary {
+  background: var(--accent);
+  color: #10221f;
+  border-color: var(--accent);
+  font-weight: 750;
+}
+button:disabled { opacity: .4; cursor: not-allowed; }
+select { min-width: 100px; }
+h2 { font-size: 16px; margin: 0 0 12px; }
+h3 { font-size: 14px; margin: 17px 0 8px; }
+.info {
+  padding: 11px;
+  background: var(--panel2);
+  border-radius: 9px;
+  color: var(--muted);
+  font-size: 13px;
+  line-height: 1.5;
+  margin-top: 12px;
+  overflow-wrap: anywhere;
+}
+.info strong { color: var(--text); }
+.move-list {
+  max-height: 160px;
+  overflow: auto;
+  font-family: ui-monospace, monospace;
+  font-size: 12px;
+  line-height: 1.8;
+  color: var(--muted);
+}
+.game-item {
+  border-bottom: 1px solid var(--border);
+  padding: 9px 2px;
+  font-size: 12px;
+  display: flex;
+  justify-content: space-between;
+  gap: 8px;
+}
+textarea {
+  width: 100%;
+  min-height: 80px;
+  padding: 10px;
+  border-radius: 9px;
+  background: #111925;
+  color: var(--text);
+  border: 1px solid var(--border);
+  resize: vertical;
+}
+.small { color: var(--muted); font-size: 11px; }
+#thinking { color: var(--accent); }
+footer {
+  padding: 20px;
+  text-align: center;
+  color: var(--muted);
+  font-size: 11px;
+}
+@media (max-width: 760px) {
+  main { grid-template-columns: 1fr; padding: 10px; gap: 12px; }
+  header { padding: 13px; }
+  .panel { padding: 11px; }
+  .board-wrap { max-width: 100%; }
+}
+</style>
+</head>
+<body>
+
+<header>
+  <div class="brand">OANI <span>Ω</span> CHESS</div>
+  <div class="status" id="connection">Đang kết nối...</div>
+</header>
+
+<main>
+  <section class="panel">
+    <div class="board-wrap">
+      <div id="board" class="board" aria-label="Bàn cờ vua"></div>
+    </div>
+
+    <div class="controls">
+      <select id="side">
+        <option value="w">Bạn cầm Trắng</option>
+        <option value="b">Bạn cầm Đen</option>
+      </select>
+
+      <select id="depth">
+        <option value="3">Độ sâu 3</option>
+        <option value="4">Độ sâu 4</option>
+        <option value="5" selected>Độ sâu 5</option>
+        <option value="6">Độ sâu 6</option>
+        <option value="7">Độ sâu 7</option>
+      </select>
+
+      <button class="primary" id="newGame">Ván mới</button>
+    </div>
+
+    <div class="toolbar">
+      <button id="undo">Đi lại</button>
+      <button id="save">Lưu ván</button>
+      <button id="analyze">Phân tích</button>
+      <button id="export">Xuất PGN</button>
+    </div>
+
+    <div class="info" id="gameStatus">
+      <strong>Trạng thái:</strong> Sẵn sàng.
+    </div>
+
+    <div class="info" id="thinking">
+      OANI Ω đang chờ nước đi.
+    </div>
+
+    <h3>Replay</h3>
+    <div class="toolbar">
+      <button id="first">|◀</button>
+      <button id="prev">◀</button>
+      <button id="next">▶</button>
+      <button id="last">▶|</button>
+    </div>
+    <div class="small" id="replayLabel">Nước 0 / 0</div>
+
+    <h3>Danh sách nước đi</h3>
+    <div class="move-list" id="moves">Chưa có nước đi.</div>
+  </section>
+
+  <aside class="panel">
+    <h2>Ω Intelligence</h2>
+
+    <div class="info">
+      <strong>Engine:</strong> OANI Independent Search Engine<br>
+      <strong>Search:</strong> Negamax + Alpha-Beta + Quiescence<br>
+      <strong>Memory:</strong> Cloud PostgreSQL<br>
+      <strong>Opponent model:</strong> Incremental profile
+    </div>
+
+    <h3>Phân tích vị trí</h3>
+    <div class="info" id="analysis">
+      Chọn Phân tích để OANI đánh giá vị trí hiện tại.
+    </div>
+
+    <h3>Hồ sơ đối thủ</h3>
+    <div class="info" id="profile">
+      Đang tải bộ nhớ...
+    </div>
+
+    <h3>PGN Import</h3>
+    <textarea id="pgnInput" placeholder="Dán PGN của bạn vào đây..."></textarea>
+    <div class="toolbar">
+      <button id="import">Nhập PGN</button>
+      <button id="refreshGames">Tải lịch sử</button>
+    </div>
+
+    <h3>Cloud Game History</h3>
+    <div id="games">
+      Chưa tải lịch sử.
+    </div>
+
+    <div class="small" style="margin-top:14px">
+      Mã người chơi được tạo ngẫu nhiên và lưu trên thiết bị.
+      Không nhập thông tin cá nhân vào PGN.
+    </div>
+  </aside>
+</main>
+
+<footer>
+  OANI Ω Chess · Independent Engine · Adaptive Memory
+</footer>
+
+<script>
+(() => {
+  "use strict";
+
+  const ChessClass = window.Chess;
+  if (!ChessClass) {
+    document.getElementById("connection").textContent =
+      "Không tải được luật cờ. Kiểm tra kết nối.";
+    return;
+  }
+
+  const $ = id => document.getElementById(id);
+  const game = new ChessClass();
+
+  const PIECES = {
+    wk: "♔", wq: "♕", wr: "♖", wb: "♗", wn: "♘", wp: "♙",
+    bk: "♚", bq: "♛", br: "♜", bb: "♝", bn: "♞", bp: "♟"
+  };
+
+  function createId() {
+    if (crypto.randomUUID) return crypto.randomUUID();
+
+    return "xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx".replace(/[xy]/g, c => {
+      const r = Math.random() * 16 | 0;
+      return (c === "x" ? r : (r & 3 | 8)).toString(16);
+    });
+  }
+
+  let playerId = localStorage.getItem("oani_player_id");
+
+  if (!playerId) {
+    playerId = createId();
+    localStorage.setItem("oani_player_id", playerId);
+  }
+
+  let humanSide = "w";
+  let selected = null;
+  let legalTargets = [];
+  let busy = false;
+  let replayIndex = null;
+  let savedGame = false;
+
+  async function api(url, body) {
+    const options = body
+      ? {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(body)
+        }
+      : {};
+
+    const response = await fetch(url, options);
+    const data = await response.json();
+
+    if (!response.ok) {
+      throw new Error(data.error || "Request failed");
+    }
+
+    return data;
+  }
+
+  function setThinking(text) {
+    $("thinking").textContent = text;
+  }
+
+  function getHistory() {
+    return game.history({ verbose: true });
+  }
+
+  function renderBoard(position = game) {
+    const board = $("board");
+    board.innerHTML = "";
+
+    const rows = [];
+    for (let r = 0; r < 8; r++) rows.push(r);
+
+    const files = humanSide === "w"
+      ? [0,1,2,3,4,5,6,7]
+      : [7,6,5,4,3,2,1,0];
+
+    const rankOrder = humanSide === "w"
+      ? [7,6,5,4,3,2,1,0]
+      : [0,1,2,3,4,5,6,7];
+
+    for (const rank of rankOrder) {
+      for (const file of files) {
+        const squareName = "abcdefgh"[file] + (8 - rank);
+        const piece = position.board()[rank][file];
+        const square = document.createElement("button");
+
+        square.className =
+          "square " + ((rank + file) % 2 === 0 ? "light" : "dark");
+
+        if (selected === squareName) square.classList.add("selected");
+
+        const target = legalTargets.find(m => m.to === squareName);
+        if (target) {
+          square.classList.add(
+            target.captured || target.flags.includes("e")
+              ? "capture"
+              : "target"
+          );
+        }
+
+        if (piece) {
+          const span = document.createElement("span");
+          span.textContent = PIECES[piece.color + piece.type];
+          span.className =
+            piece.color === "w" ? "piece-white" : "piece-black";
+          square.appendChild(span);
+        }
+
+        if (file === files[0]) {
+          const coord = document.createElement("span");
+          coord.className = "coordinates";
+          coord.textContent = 8 - rank;
+          square.appendChild(coord);
+        }
+
+        if (rank === rankOrder[7]) {
+          const coord = document.createElement("span");
+          coord.className = "coordinates";
+          coord.style.left = "auto";
+          coord.style.right = "3px";
+          coord.style.top = "auto";
+          coord.style.bottom = "1px";
+          coord.textContent = "abcdefgh"[file];
+          square.appendChild(coord);
+        }
+
+        square.addEventListener("click", () => onSquareClick(squareName));
+        board.appendChild(square);
+      }
+    }
+  }
+
+  function updateStatus() {
+    let message = "Đến lượt " +
+      (game.turn() === "w" ? "Trắng" : "Đen") + ".";
+
+    if (game.isCheckmate()) {
+      message = "Chiếu hết. " +
+        (game.turn() === "w" ? "Đen" : "Trắng") + " thắng.";
+    } else if (game.isDraw()) {
+      message = "Ván đấu hòa.";
+    } else if (game.isCheck()) {
+      message += " Đang bị chiếu.";
+    }
+
+    $("gameStatus").innerHTML = "<strong>Trạng thái:</strong> " + message;
+    updateMoveList();
+  }
+
+  function updateMoveList() {
+    const history = getHistory();
+
+    if (!history.length) {
+      $("moves").textContent = "Chưa có nước đi.";
+      return;
+    }
+
+    const lines = [];
+
+    for (let i = 0; i < history.length; i += 2) {
+      lines.push(
+        `${Math.floor(i / 2) + 1}. ${history[i].san}` +
+        (history[i + 1] ? ` ${history[i + 1].san}` : "")
+      );
+    }
+
+    $("moves").textContent = lines.join("  |  ");
+  }
+
+  function replayPosition(index) {
+    const history = getHistory();
+    const replay = new ChessClass();
+
+    for (let i = 0; i < index; i++) {
+      const m = history[i];
+      replay.move({
+        from: m.from,
+        to: m.to,
+        promotion: m.promotion
+      });
+    }
+
+    replayIndex = index;
+    selected = null;
+    legalTargets = [];
+    renderBoard(replay);
+
+    $("replayLabel").textContent =
+      `Nước ${index} / ${history.length}`;
+  }
+
+  function exitReplay() {
+    replayIndex = null;
+    renderBoard();
+    $("replayLabel").textContent =
+      `Nước ${getHistory().length} / ${getHistory().length}`;
+  }
+
+  function onSquareClick(square) {
+    if (busy || replayIndex !== null || game.isGameOver()) return;
+    if (game.turn() !== humanSide) return;
+
+    const piece = game.get(square);
+
+    if (selected) {
+      const target = legalTargets.find(m => m.to === square);
+
+      if (target) {
+        let promotion = target.promotion;
+
+        if (target.flags.includes("p")) {
+          promotion = prompt(
+            "Chọn quân phong cấp: q, r, b, n",
+            "q"
+          );
+
+          promotion = ["q", "r", "b", "n"].includes(promotion)
+            ? promotion
+            : "q";
+        }
+
+        playHumanMove(selected, square, promotion);
+        return;
+      }
+    }
+
+    if (piece && piece.color === humanSide) {
+      selected = square;
+      legalTargets = game.moves({
+        square,
+        verbose: true
+      });
+    } else {
+      selected = null;
+      legalTargets = [];
+    }
+
+    renderBoard();
+  }
+
+  async function observeMove(move, moveNumber) {
+    try {
+      await api("/api/observe", {
+        playerId,
+        piece: move.piece,
+        capture: Boolean(move.captured),
+        check: game.isCheck(),
+        queenMove: move.piece === "q",
+        kingExposed: false,
+        moveNumber
+      });
+      loadProfile();
+    } catch (error) {
+      console.warn("Memory update:", error.message);
+    }
+  }
+
+  async function playHumanMove(from, to, promotion) {
+    let move;
+
+    try {
+      move = game.move({ from, to, promotion });
+    } catch {
+      move = null;
+    }
+
+    selected = null;
+    legalTargets = [];
+
+    if (!move) {
+      renderBoard();
+      return;
+    }
+
+    savedGame = false;
+    exitReplay();
+    renderBoard();
+    updateStatus();
+
+    await observeMove(move, getHistory().length);
+
+    if (game.isGameOver()) {
+      setThinking("Ván đấu đã kết thúc.");
+      await saveGame();
+      return;
+    }
+
+    await makeAIMove();
+  }
+
+  async function makeAIMove() {
+    if (busy || game.isGameOver()) return;
+
+    busy = true;
+    setThinking("OANI Ω đang tìm kiếm nước đi...");
+    renderBoard();
+
+    try {
+      const response = await api("/api/engine", {
+        fen: game.fen(),
+        playerId,
+        depth: Number($("depth").value),
+        timeMs: 3500
+      });
+
+      const best = response.result.bestMove;
+
+      if (!best) {
+        setThinking("Không tìm thấy nước đi hợp lệ.");
+        return;
+      }
+
+      const move = game.move(best);
+
+      if (!move) {
+        setThinking("Nước đi engine trả về không hợp lệ.");
+        return;
+      }
+
+      savedGame = false;
+      renderBoard();
+      updateStatus();
+
+      setThinking(
+        `OANI Ω: ${move.san} · Depth ${response.result.depth}` +
+        ` · ${response.result.nodes.toLocaleString()} nodes`
+      );
+
+      if (game.isGameOver()) {
+        await saveGame();
+      }
+    } catch (error) {
+      setThinking("Lỗi engine: " + error.message);
+    } finally {
+      busy = false;
+      renderBoard();
+    }
+  }
+
+  async function loadProfile() {
+    try {
+      const data = await api("/api/profile/" + playerId);
+      const p = data.profile;
+
+      $("profile").innerHTML =
+        `<strong>Ván đã lưu:</strong> ${p.games_played}<br>` +
+        `<strong>Xu hướng tấn công:</strong> ${(p.aggression * 100).toFixed(1)}%<br>` +
+        `<strong>Di chuyển hậu sớm:</strong> ${(p.queen_early * 100).toFixed(1)}%<br>` +
+        `<strong>Vua dễ bị tấn công:</strong> ${(p.king_exposure * 100).toFixed(1)}%<br>` +
+        `<strong>Tỷ lệ bắt quân:</strong> ${(p.capture_rate * 100).toFixed(1)}%<br>` +
+        `<strong>Số nước đã quan sát:</strong> ${p.total_moves}`;
+    } catch (error) {
+      $("profile").textContent = "Không tải được hồ sơ: " + error.message;
+    }
+  }
+
+  async function analyzePosition() {
+    $("analysis").textContent = "OANI Ω đang phân tích...";
+
+    try {
+      const data = await api("/api/analyze", {
+        fen: game.fen(),
+        playerId,
+        depth: 6,
+        timeMs: 5000
+      });
+
+      const r = data.result;
+      const score = (r.score / 100).toFixed(2);
+
+      $("analysis").innerHTML =
+        `<strong>Đánh giá:</strong> ${score} pawn ` +
+        `(theo bên tới lượt)<br>` +
+        `<strong>Độ sâu hoàn thành:</strong> ${r.depth}<br>` +
+        `<strong>Số node:</strong> ${r.nodes.toLocaleString()}<br>` +
+        `<strong>Thời gian:</strong> ${r.elapsedMs} ms<br>` +
+        `<strong>Nước đề xuất:</strong> ${
+          r.bestMove ? r.bestMove.from + " → " + r.bestMove.to : "Không có"
+        }<br>` +
+        `<strong>Principal Variation:</strong> ${
+          (r.pv || []).join(" ")
+        }`;
+    } catch (error) {
+      $("analysis").textContent = "Phân tích thất bại: " + error.message;
+    }
+  }
+
+  async function saveGame() {
+    if (savedGame || getHistory().length === 0) return;
+
+    try {
+      const result = game.isCheckmate()
+        ? (game.turn() === "w" ? "0-1" : "1-0")
+        : game.isDraw() ? "1/2-1/2" : "*";
+
+      await api("/api/games", {
+        playerId,
+        pgn: game.pgn(),
+        result,
+        moveCount: getHistory().length
+      });
+
+      savedGame = true;
+      setThinking("Đã lưu ván đấu lên Cloud Memory.");
+      loadGames();
+      loadProfile();
+    } catch (error) {
+      setThinking("Không thể lưu ván: " + error.message);
+    }
+  }
+
+  async function loadGames() {
+    try {
+      const data = await api("/api/games/" + playerId);
+      const root = $("games");
+      root.innerHTML = "";
+
+      if (!data.games.length) {
+        root.textContent = "Chưa có ván đấu nào.";
+        return;
+      }
+
+      for (const item of data.games) {
+        const row = document.createElement("div");
+        row.className = "game-item";
+
+        const label = document.createElement("span");
+        label.textContent =
+          `#${item.id} · ${item.result} · ${item.move_count} nước`;
+
+        const button = document.createElement("button");
+        button.textContent = "Mở";
+        button.addEventListener("click", () => {
+          try {
+            game.loadPgn(item.pgn);
+            humanSide = $("side").value;
+            savedGame = true;
+            exitReplay();
+            renderBoard();
+            updateStatus();
+            replayPosition(0);
+            setThinking("Đã tải ván đấu từ Cloud Memory.");
+          } catch {
+            setThinking("PGN lưu trữ không hợp lệ.");
+          }
+        });
+
+        row.append(label, button);
+        root.appendChild(row);
+      }
+    } catch (error) {
+      $("games").textContent = "Không tải được lịch sử: " + error.message;
+    }
+  }
+
+  function newGame() {
+    game.reset();
+    humanSide = $("side").value;
+    selected = null;
+    legalTargets = [];
+    replayIndex = null;
+    savedGame = false;
+    busy = false;
+
+    $("analysis").textContent =
+      "Chọn Phân tích để đánh giá vị trí hiện tại.";
+
+    renderBoard();
+    updateStatus();
+    $("replayLabel").textContent = "Nước 0 / 0";
+    setThinking("Ván mới đã bắt đầu.");
+
+    if (humanSide === "b") {
+      makeAIMove();
+    }
+  }
+
+  $("newGame").addEventListener("click", newGame);
+  $("analyze").addEventListener("click", analyzePosition);
+  $("save").addEventListener("click", saveGame);
+  $("refreshGames").addEventListener("click", loadGames);
+
+  $("undo").addEventListener("click", () => {
+    if (busy) return;
+
+    game.undo();
+    if (game.turn() !== humanSide) game.undo();
+
+    exitReplay();
+    savedGame = false;
+    renderBoard();
+    updateStatus();
+    setThinking("Đã hoàn tác nước đi.");
+  });
+
+  $("first").addEventListener("click", () => replayPosition(0));
+  $("prev").addEventListener("click", () => {
+    const index = replayIndex === null
+      ? getHistory().length
+      : replayIndex;
+
+    replayPosition(Math.max(0, index - 1));
+  });
+
+  $("next").addEventListener("click", () => {
+    const index = replayIndex === null ? 0 : replayIndex;
+    replayPosition(Math.min(getHistory().length, index + 1));
+  });
+
+  $("last").addEventListener("click", exitReplay);
+
+  $("export").addEventListener("click", () => {
+    const pgn = game.pgn();
+    const blob = new Blob([pgn], { type: "text/plain" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+
+    a.href = url;
+    a.download = "oani-game.pgn";
+    a.click();
+
+    URL.revokeObjectURL(url);
+  });
+
+  $("import").addEventListener("click", () => {
+    const pgn = $("pgnInput").value.trim();
+
+    if (!pgn) {
+      setThinking("Hãy dán PGN trước.");
+      return;
+    }
+
+    try {
+      game.loadPgn(pgn);
+      humanSide = $("side").value;
+      savedGame = false;
+      exitReplay();
+      renderBoard();
+      updateStatus();
+      replayPosition(0);
+      setThinking("Đã nhập PGN thành công.");
+    } catch {
+      setThinking("PGN không hợp lệ hoặc không được hỗ trợ.");
+    }
+  });
+
+  async function initialize() {
+    try {
+      await api("/health");
+      $("connection").textContent = "● Backend online";
+    } catch {
+      $("connection").textContent = "● Backend chưa sẵn sàng";
+    }
+
+    renderBoard();
+    updateStatus();
+    loadProfile();
+    loadGames();
+  }
+
+  initialize();
+})();
+</script>
+</body>
+</html>
